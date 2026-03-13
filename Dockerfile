@@ -1,6 +1,6 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY backend/package.json backend/package-lock.json ./
+COPY backend/package*.json ./
 RUN npm ci --omit=dev
 
 FROM node:20-alpine AS runner

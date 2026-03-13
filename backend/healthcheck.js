@@ -10,7 +10,10 @@ const request = http.get(
   }
 );
 
-request.on('error', () => process.exit(1));
+request.on('error', (error) => {
+  console.error('Healthcheck failed:', error.message);
+  process.exit(1);
+});
 request.on('timeout', () => {
   request.destroy();
   process.exit(1);

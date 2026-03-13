@@ -1,12 +1,22 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 
 const { MONGODB_URI, PORT } = require('./config');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+app.use('/api', apiLimiter);
 
 // Serve static files from the 'uploads' directory
 app.use('/uploads', express.static('uploads'));

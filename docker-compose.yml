@@ -4,8 +4,6 @@ services:
       context: .
       dockerfile: Dockerfile
     image: ${IMAGE_NAME:-hive-help}:local
-    env_file:
-      - .env
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-5000}

@@ -18,7 +18,7 @@ function Register() {
           <form onSubmit={async (e) => {
             e.preventDefault();
             try {
-              await axios.post('http://localhost:5000/api/auth/register', form);
+              await axios.post('/api/auth/register', form);
               window.alert('Registered! Please login.');
             } catch (err) {
               window.alert('Registration failed: ' + (err.response?.data?.error || 'Unknown error'));

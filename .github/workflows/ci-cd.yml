@@ -88,3 +88,47 @@ jobs:
         with:
           name: deployment-info
           path: deployment.env
+
+  deploy:
+    needs: build-test-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            mkdir -p ~/app
+            rm -rf ~/app/*
+            
+      - name: Copy files to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.yml,deploy.sh,scripts/setup_ec2.sh,nginx.conf"
+          target: "~/app"
+
+      - name: Create .env and Run remote deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/app
+            echo "NODE_ENV=${{ secrets.NODE_ENV }}" > .env
+            echo "PORT=${{ secrets.PORT }}" >> .env
+            echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+            echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/hive-help:latest" >> .env
+            chmod +x scripts/setup_ec2.sh deploy.sh
+            ./scripts/setup_ec2.sh
+            ./deploy.sh

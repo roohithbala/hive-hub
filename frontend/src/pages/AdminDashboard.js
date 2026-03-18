@@ -11,7 +11,7 @@ const dark = "#3A2C13";
 const api = () => {
   const token = localStorage.getItem('token');
   return axios.create({
-    baseURL: 'http://localhost:5000/api',
+    baseURL: '/api',
     headers: { 'Authorization': `Bearer ${token}` }
   });
 };
@@ -263,7 +263,7 @@ function AdminDashboard({ setRole }) {
                       {products.map(p => (
                         <tr key={p._id}>
                           <td>
-                            {p.image ? (<img src={`http://localhost:5000/uploads/${p.image}`} alt={p.name} style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '8px' }} />)
+                            {p.image ? (<img src={`/uploads/${p.image}`} alt={p.name} style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '8px' }} />)
                               : (<div style={{ width: '50px', height: '50px', background: '#f0e5c4', borderRadius: '8px' }} />)}
                           </td>
                           <td className="fw-bold">{p.name}</td>

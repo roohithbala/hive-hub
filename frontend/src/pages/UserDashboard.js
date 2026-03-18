@@ -14,7 +14,7 @@ const DashboardContext = React.createContext();
 
 // Create a single axios instance. Its headers will be updated via an interceptor.
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: '/api',
 });
 
 function UserDashboard({ setRole }) {
@@ -300,7 +300,7 @@ function UserDashboard({ setRole }) {
                 <div className="col-md-6 col-lg-4" key={p._id}>
                   <div className="card h-100 shadow-sm border-0 product-card" style={{ borderRadius: 15, background: "#fffbe6", transition: 'transform 0.2s, box-shadow 0.2s' }}>
                     {p.image ? (
-                      <img src={`http://localhost:5000/uploads/${p.image}`} alt={p.name} style={{ height: '200px', objectFit: 'cover', borderRadius: '15px 15px 0 0' }} />
+                      <img src={`/uploads/${p.image}`} alt={p.name} style={{ height: '200px', objectFit: 'cover', borderRadius: '15px 15px 0 0' }} />
                     ) : (
                       <div style={{ height: '200px', background: '#f0e5c4', borderRadius: '15px 15px 0 0' }} className="d-flex align-items-center justify-content-center text-muted">
                         No Image

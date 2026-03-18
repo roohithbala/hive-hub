@@ -7,7 +7,7 @@ function OrderHistory() {
 
   useEffect(() => {
     const fetchOrders = async () => {
-      const res = await axios.get('http://localhost:5000/api/orders', {
+      const res = await axios.get('/api/orders', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setOrders(res.data);

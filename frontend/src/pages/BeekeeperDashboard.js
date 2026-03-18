@@ -11,7 +11,7 @@ const dark = "#3A2C13";
 const api = () => {
   const token = localStorage.getItem('token');
   return axios.create({
-    baseURL: 'http://localhost:5000/api',
+    baseURL: '/api',
     headers: { 'Authorization': `Bearer ${token}` }
   });
 };
@@ -214,7 +214,7 @@ function BeekeeperDashboard({ setRole }) {
                       {products.length > 0 ? products.map(p => (
                         <tr key={p._id}>
                           <td>
-                            {p.image ? (<img src={`http://localhost:5000/uploads/${p.image}`} alt={p.name} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} />) : (<div style={{ width: '60px', height: '60px', background: '#f0e5c4', borderRadius: '8px' }} className="d-flex align-items-center justify-content-center text-muted small">No Img</div>)}
+                            {p.image ? (<img src={`/uploads/${p.image}`} alt={p.name} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} />) : (<div style={{ width: '60px', height: '60px', background: '#f0e5c4', borderRadius: '8px' }} className="d-flex align-items-center justify-content-center text-muted small">No Img</div>)}
                           </td>
                           <td className="fw-bold">{p.name}</td>
                           <td>₹{p.price}</td>
@@ -269,7 +269,7 @@ function BeekeeperDashboard({ setRole }) {
               <p><strong>Address:</strong> {selectedAppointment.address}</p>
               <p><strong>Severity:</strong> <span className="text-capitalize">{selectedAppointment.severity}</span></p>
               <p><strong>Hive Location:</strong> {selectedAppointment.hivespot}</p>
-              {selectedAppointment.photo && <p><strong>Photo:</strong> <a href={`http://localhost:5000/uploads/${selectedAppointment.photo}`} target="_blank" rel="noopener noreferrer">View Photo</a></p>}
+              {selectedAppointment.photo && <p><strong>Photo:</strong> <a href={`/uploads/${selectedAppointment.photo}`} target="_blank" rel="noopener noreferrer">View Photo</a></p>}
             </div>
           )}
         </Modal.Body>

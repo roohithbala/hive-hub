@@ -9,7 +9,7 @@ function HoneyStore() {
 
   useEffect(() => {
     const fetchProducts = async () => {
-      const res = await axios.get('http://localhost:5000/api/products', {
+      const res = await axios.get('/api/products', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setProducts(res.data);
@@ -20,7 +20,7 @@ function HoneyStore() {
 
   const handleOrder = async (productId) => {
     try {
-      await axios.post('http://localhost:5000/api/orders', {
+      await axios.post('/api/orders', {
         productId,
         quantity: quantity[productId] || 1
       }, {
@@ -40,7 +40,7 @@ function HoneyStore() {
         {products.map(p => (
           <li className="list-group-item d-flex align-items-center p-3" key={p._id}>
             {p.image ? (
-              <img src={`http://localhost:5000/uploads/${p.image}`} alt={p.name} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', marginRight: '15px' }} />
+              <img src={`/uploads/${p.image}`} alt={p.name} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', marginRight: '15px' }} />
             ) : (
               <div style={{ width: '80px', height: '80px', background: '#f0e5c4', borderRadius: '8px', marginRight: '15px' }} className="d-flex align-items-center justify-content-center text-muted small">
                 No Img

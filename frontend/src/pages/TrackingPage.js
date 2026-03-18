@@ -11,7 +11,7 @@ function TrackingPage() {
 
   const api = useCallback(() => {
     return axios.create({
-      baseURL: 'http://localhost:5000/api',
+      baseURL: '/api',
       headers: { 'Authorization': `Bearer ${token}` }
     });
   }, [token]);

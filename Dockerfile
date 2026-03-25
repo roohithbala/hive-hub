@@ -4,6 +4,8 @@ COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
+# Debug: Check if build was successful
+RUN ls -la build/ && echo "Build directory contents:" && find build -type f | head -10
 
 FROM node:20-alpine AS backend-deps
 WORKDIR /app
@@ -15,6 +17,8 @@ RUN apk add --no-cache nginx
 
 WORKDIR /app
 COPY --from=frontend-build /app/build /usr/share/nginx/html
+# Debug: Check if files were copied correctly
+RUN ls -la /usr/share/nginx/html/ && echo "Nginx html directory contents:" && find /usr/share/nginx/html -type f | head -10
 COPY --from=backend-deps /app/node_modules /app/backend/node_modules
 COPY backend/package.json /app/backend/
 COPY backend/ /app/backend/

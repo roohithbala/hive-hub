@@ -49,7 +49,7 @@ function BeekeeperDashboard({ setRole }) {
         .catch(() => setError(prev => ({ ...prev, appointments: 'Could not fetch assigned appointments.' })))
         .finally(() => setLoading(prev => ({ ...prev, appointments: false }))),
 
-      // Fetch Products
+
       api().get('/products/my-products')
         .then(res => setProducts(res.data))
         .catch(() => setError(prev => ({ ...prev, products: 'Could not fetch your products.' })))

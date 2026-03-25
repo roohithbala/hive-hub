@@ -42,9 +42,19 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/users', usersRoutes);
 
 // Connect to MongoDB
+console.log(`Connecting to MongoDB at: ${MONGODB_URI}`);
+console.log(`Server will run on port: ${PORT}`);
+
 mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 20000 })
-  .then(() => app.listen(PORT, () => console.log(`Server running on port ${PORT}`)))
+  .then(() => {
+    console.log('✅ MongoDB connected successfully');
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌐 Frontend should be accessible via nginx on port 80`);
+    });
+  })
   .catch(err => {
-    console.error(err);
+    console.error('❌ MongoDB connection failed:', err.message);
+    console.error('Full error:', err);
     process.exit(1);
   });

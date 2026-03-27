@@ -110,11 +110,18 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            echo "Starting EC2 cleanup..."
+            echo "Starting aggressive EC2 cleanup..."
             set -e
+            # Stop conflicting services
+            sudo systemctl stop k3s || true
+            sudo systemctl disable k3s || true
+            sudo systemctl stop nginx || true
+            sudo pkill -f traefik || true
+            
+            # Remove old files
             mkdir -p ~/app
             rm -rf ~/app/*
-            echo "EC2 cleanup complete."
+            echo "Cleanup complete."
             
       - name: Copy files to EC2
         uses: appleboy/scp-action@v0.1.7
@@ -122,9 +129,9 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "docker-compose.yml,deploy.sh,scripts/setup_ec2.sh,nginx.conf"
+          source: "docker-compose.yml,deploy.sh,scripts/setup_ec2.sh,nginx.conf,default.conf"
           target: "~/app"
-
+ 
       - name: Create .env and Run remote deployment
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -139,5 +146,12 @@ jobs:
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
             echo "IMAGE_NAME=ghcr.io/${{ steps.repo.outputs.name }}" >> .env
             chmod +x scripts/setup_ec2.sh deploy.sh
+            
+            # Setup environment
             ./scripts/setup_ec2.sh
+            
+            # Aggressive Docker cleanup
+            sudo docker system prune -af --volumes || true
+            
+            # Start fresh
             ./deploy.sh

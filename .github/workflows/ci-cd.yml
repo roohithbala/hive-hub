@@ -103,25 +103,6 @@ jobs:
         id: repo
         run: echo "name=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
 
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            echo "Starting aggressive EC2 cleanup..."
-            # Stop conflicting services (don't fail if they don't exist)
-            sudo systemctl stop k3s >/dev/null 2>&1 || true
-            sudo systemctl disable k3s >/dev/null 2>&1 || true
-            sudo systemctl stop nginx >/dev/null 2>&1 || true
-            sudo pkill -f traefik || true
-            
-            # Remove old files
-            mkdir -p ~/app
-            rm -rf ~/app/*
-            echo "Cleanup complete."
-            
       - name: Copy files to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -131,7 +112,7 @@ jobs:
           source: "docker-compose.yml,deploy.sh,scripts/setup_ec2.sh,nginx.conf,default.conf"
           target: "~/app"
  
-      - name: Create .env and Run remote deployment
+      - name: Deploy and Restart
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -139,18 +120,25 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd ~/app
+            
+            # Stop k3s/traefik if they are taking port 80
+            sudo systemctl stop k3s 2>/dev/null || true
+            sudo pkill -9 traefik 2>/dev/null || true
+            
+            # Create .env
             echo "NODE_ENV=${{ secrets.NODE_ENV }}" > .env
             echo "PORT=${{ secrets.PORT }}" >> .env
             echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
             echo "IMAGE_NAME=ghcr.io/${{ steps.repo.outputs.name }}" >> .env
+            
             chmod +x scripts/setup_ec2.sh deploy.sh
             
-            # Setup environment
+            # Run setup (Docker etc)
             ./scripts/setup_ec2.sh
             
-            # Aggressive Docker cleanup
-            sudo docker system prune -af --volumes || true
+            # Cleanup Docker state
+            sudo docker system prune -f
             
-            # Start fresh
+            # Deploy
             ./deploy.sh

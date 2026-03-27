@@ -30,6 +30,7 @@ ENV MONGODB_URI=$MONGODB_URI
 ENV JWT_SECRET=$JWT_SECRET
 
 COPY nginx.conf /etc/nginx/nginx.conf
+COPY default.conf /etc/nginx/http.d/default.conf
 COPY start.sh /start.sh
 RUN chmod +x /start.sh && \
     mkdir -p /var/cache/nginx /var/log/nginx && \

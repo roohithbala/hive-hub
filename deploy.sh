@@ -7,9 +7,9 @@ cd "$(dirname "$0")"
 echo "🚀 Starting deployment with Docker Compose..."
 
 # Pull latest images
-docker compose pull
+sudo docker compose pull
 
 # Start/Update services
-docker compose up -d
+sudo docker compose up -d
 
 echo "✅ Deployment complete. Watchtower is now monitoring for updates."

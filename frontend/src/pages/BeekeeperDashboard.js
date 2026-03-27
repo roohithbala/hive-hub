@@ -75,8 +75,7 @@ function BeekeeperDashboard({ setRole }) {
 
   const handleOrderStatusUpdate = async (orderId, newStatus) => {
     try {
-      // CORRECTED: This now calls the beekeeper-accessible route in `orders.js`
-      // The previous call was to an admin-only route.
+     
       await api().patch(`/orders/${orderId}/status`, { status: newStatus });
       window.alert(`Order status updated to ${newStatus}.`);
       fetchData();

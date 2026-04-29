@@ -102,16 +102,17 @@ jobs:
             sudo systemctl stop nginx 2>/dev/null || true
             sudo fuser -k 80/tcp 2>/dev/null || true
 
-            # 4. Login to GHCR to avoid permission denied
+            # 4. Login to GHCR
             echo "$GITHUB_TOKEN" | sudo docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
-            # 5. Deploy via Docker Compose
-            export IMAGE_NAME="$IMAGE_TAG"
-            export MONGODB_URI="$MONGODB_URI"
-            export JWT_SECRET="$JWT_SECRET"
-            export NODE_ENV="$NODE_ENV"
-            export PORT="$PORT"
+            # 5. Create .env file for Docker Compose (Fixes variable visibility)
+            echo "IMAGE_NAME=$IMAGE_TAG" > .env
+            echo "MONGODB_URI=$MONGODB_URI" >> .env
+            echo "JWT_SECRET=$JWT_SECRET" >> .env
+            echo "NODE_ENV=$NODE_ENV" >> .env
+            echo "PORT=$PORT" >> .env
 
+            # 6. Deploy via Docker Compose
             sudo docker compose pull
             sudo docker compose up -d --force-recreate --remove-orphans
 

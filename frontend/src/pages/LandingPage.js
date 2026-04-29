@@ -77,9 +77,11 @@ function LandingPage() {
               <img src="/hive1.jpg" className="d-block mx-lg-auto img-fluid" alt="Bees on a honeycomb" width="700" height="500" loading="lazy" style={{ borderRadius: '15px', boxShadow: '0 15px 30px -10px rgba(0,0,0,0.2)' }} />
             </div>
             <div className="col-lg-6">
-              <h1 className="display-4 fw-bold lh-1 mb-3" style={{ color: dark }}>Your Honeybee Companion.</h1>
-              <p className="lead" style={{ color: "#5a4a1c" }}>
-                From safe honeycomb removal by trusted beekeepers to a marketplace for pure, natural honey. We connect you with the world of bees.
+              <h1 className="display-3 fw-bold lh-1 mb-3" style={{ color: dark }}>
+                Experience Pure Nature with <span style={{ color: '#E67E22' }}>HIVEHELP</span>
+              </h1>
+              <p className="lead" style={{ color: "#5a4a1c", fontSize: '1.25rem' }}>
+                Join our community of bee lovers. From professional honeycomb removal to premium organic honey delivered to your doorstep. We are your ultimate honeybee companion.
               </p>
               <div className="d-grid gap-2 d-md-flex justify-content-md-start mt-4">
                 <button type="button" className="btn btn-lg px-4 me-md-2" style={{ background: accent, color: dark, fontWeight: 600 }} onClick={() => navigate('/register')}>Get Started</button>

@@ -184,16 +184,16 @@ jobs:
             # ── 7. Install and configure Host NGINX ───────────────────────
             sudo apt-get update && sudo apt-get install -y nginx
 
-            # Get the stable ClusterIP of the service (never changes, handles rollouts)
-            CLUSTER_IP=$(sudo k3s kubectl get svc hive-help-service -o jsonpath='{.spec.clusterIP}')
-            echo "Proxying to ClusterIP: \$CLUSTER_IP"
+            # Get the Pod IP of the NEWEST pod (bypasses terminating pods and ClusterIP host-routing issues)
+            POD_IP=$(sudo k3s kubectl get pods -l app=hive-help --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].status.podIP}' | awk '{print \$NF}')
+            echo "Proxying directly to newest Pod IP: \$POD_IP"
             
             sudo tee /etc/nginx/sites-enabled/default > /dev/null << NGINXEOF
             server {
                 listen 80 default_server;
                 server_name _;
                 location / {
-                    proxy_pass http://$CLUSTER_IP:80;
+                    proxy_pass http://$POD_IP:80;
                     proxy_http_version 1.1;
                     proxy_set_header Host \$host;
                     proxy_set_header X-Real-IP \$remote_addr;

@@ -122,11 +122,13 @@ jobs:
               '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 8.8.4.4\n    cache 30\n    loop\n    reload\n    loadbalance\n}\n"}}' || true
             sudo k3s kubectl -n kube-system rollout restart deployment coredns
 
-            # ── 3. Stop old containers and clear iptables ───────────────────
+            # ── 3. Stop old containers ────────────────────────────────────
             sudo docker stop hive-help 2>/dev/null || true
             sudo docker rm hive-help 2>/dev/null || true
-            sudo iptables -t nat -F PREROUTING 2>/dev/null || true
-            sudo iptables -t nat -F OUTPUT 2>/dev/null || true
+            
+            # Restart k3s to ensure iptables rules are rebuilt
+            sudo systemctl restart k3s
+            sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
 
             # ── 4. GHCR pull secret ───────────────────────────────────────
             sudo k3s kubectl create secret docker-registry ghcr-secret \

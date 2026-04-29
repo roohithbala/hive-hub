@@ -182,12 +182,14 @@ jobs:
             # ── 7. Install and configure Host NGINX ───────────────────────
             sudo apt-get update && sudo apt-get install -y nginx
 
-            sudo bash -c 'cat > /etc/nginx/sites-enabled/default << NGINXEOF
+            POD_IP=$(sudo k3s kubectl get pod -l app=hive-help -o jsonpath='{.items[0].status.podIP}')
+            
+            sudo tee /etc/nginx/sites-enabled/default > /dev/null << NGINXEOF
             server {
                 listen 80 default_server;
                 server_name _;
                 location / {
-                    proxy_pass http://127.0.0.1:31000;
+                    proxy_pass http://$POD_IP;
                     proxy_http_version 1.1;
                     proxy_set_header Host \$host;
                     proxy_set_header X-Real-IP \$remote_addr;
@@ -195,7 +197,7 @@ jobs:
                     proxy_read_timeout 60s;
                 }
             }
-            NGINXEOF'
+            NGINXEOF
 
             sudo nginx -t && sudo systemctl enable nginx && sudo systemctl restart nginx
 

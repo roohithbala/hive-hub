@@ -29,6 +29,9 @@ function App() {
 
   return (
     <Router>
+      <div style={{ background: '#4CAF50', color: 'white', textAlign: 'center', padding: '10px' }}>
+        🚀 Watchtower Automated Deployment is Active!
+      </div>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login setRole={handleSetRole} />} />

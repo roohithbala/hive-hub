@@ -97,35 +97,71 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # ── 1. Ensure Docker is installed ─────────────────────────────
-            if ! command -v docker > /dev/null 2>&1; then
-              sudo apt-get update && sudo apt-get install -y docker.io
-              sudo systemctl enable --now docker
+            # ── 1. Install K3s (only if missing, with traefik disabled) ───
+            if ! command -v k3s > /dev/null 2>&1; then
+              curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
             fi
+            sudo systemctl start k3s
+            sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
 
-            # ── 2. Clean up K8s, nginx and old iptables rules ─────────────
-            sudo systemctl stop k3s 2>/dev/null || true
+            # ── 2. Stop conflicting services ──────────────────────────────
             sudo systemctl stop nginx 2>/dev/null || true
-            sudo iptables -t nat -F 2>/dev/null || true
-
-            # ── 3. Login to GHCR ──────────────────────────────────────────
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io \
-              -u ${{ github.actor }} --password-stdin
-
-            # ── 4. Pull latest image ──────────────────────────────────────
-            sudo docker pull ghcr.io/${{ steps.repo.outputs.name }}:latest
-
-            # ── 5. Stop old container and start fresh ─────────────────────
             sudo docker stop hive-help 2>/dev/null || true
             sudo docker rm hive-help 2>/dev/null || true
+            sudo iptables -t nat -F 2>/dev/null || true
 
-            sudo docker run -d \
-              --name hive-help \
-              --restart unless-stopped \
-              -p 80:80 \
-              -p 5000:5000 \
-              ghcr.io/${{ steps.repo.outputs.name }}:latest
+            # ── 3. GHCR pull secret ───────────────────────────────────────
+            sudo k3s kubectl create secret docker-registry ghcr-secret \
+              --docker-server=ghcr.io \
+              --docker-username=${{ github.actor }} \
+              --docker-password=${{ secrets.GITHUB_TOKEN }} \
+              --dry-run=client -o yaml | sudo k3s kubectl apply -f -
 
-            sleep 3
-            sudo docker ps | grep hive-help
+            # ── 4. Deploy app + LoadBalancer on port 80 ───────────────────
+            # K3s servicelb will create a svclb pod that binds port 80 on host
+            sudo k3s kubectl apply -f - << 'EOF'
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: hive-help-app
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: hive-help
+              template:
+                metadata:
+                  labels:
+                    app: hive-help
+                spec:
+                  imagePullSecrets:
+                  - name: ghcr-secret
+                  containers:
+                  - name: hive-help
+                    image: ghcr.io/${{ steps.repo.outputs.name }}:latest
+                    imagePullPolicy: Always
+                    ports:
+                    - containerPort: 80
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: hive-help-service
+            spec:
+              type: LoadBalancer
+              selector:
+                app: hive-help
+              ports:
+              - name: http
+                port: 80
+                targetPort: 80
+            EOF
+
+            # ── 5. Rollout latest image ───────────────────────────────────
+            sudo k3s kubectl rollout restart deployment hive-help-app
+            sudo k3s kubectl rollout status deployment hive-help-app --timeout=120s
+
+            # ── 6. Wait for svclb pod to bind port 80 ─────────────────────
+            sleep 5
+            sudo k3s kubectl get pods -A
             echo "✅ App live at http://$(curl -s ifconfig.me)"

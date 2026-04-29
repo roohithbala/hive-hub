@@ -1,208 +1,115 @@
-name: CI/CD
+name: CI/CD Pipeline
 
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
+env:
+  REGISTRY: ghcr.io
+  APP_IMAGE: ghcr.io/${{ github.repository_owner }}/hive-help
+
 jobs:
-  build-test-push:
+  build-and-push:
+    name: Build & Push Docker Image
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: "npm"
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Detect test script
-        id: tests
-        run: |
-          node scripts/detect-tests.js backend/package.json >> $GITHUB_OUTPUT
-
-      - name: Install backend dependencies
-        if: steps.tests.outputs.shouldRun == 'true'
-        run: npm ci
-        working-directory: backend
-
-      - name: Run backend tests
-        if: steps.tests.outputs.shouldRun == 'true'
-        run: npm test
-        working-directory: backend
-
-      - name: Set image name
-        id: image
-        run: |
-          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.image.outputs.name }}
-          tags: |
-            type=raw,value=latest
-            type=sha
-
-      - name: Build and push image
+      - name: Build and push application image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile
           push: true
-          platforms: linux/amd64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ env.APP_IMAGE }}:${{ github.sha }}, ${{ env.APP_IMAGE }}:latest
           build-args: |
             MONGODB_URI=${{ secrets.MONGODB_URI }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             NODE_ENV=${{ secrets.NODE_ENV }}
             PORT=${{ secrets.PORT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
-    needs: build-test-push
+    name: Deploy to EC2
     runs-on: ubuntu-latest
+    needs: build-and-push
     if: github.ref == 'refs/heads/main'
     steps:
-      - name: Set lower case repo name
-        id: repo
-        run: echo "name=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            # ── 1. Install K3s (only if missing, with traefik disabled) ───
+      - name: Deploy to EC2 via SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          IMAGE_TAG: ghcr.io/${{ github.repository_owner }}/hive-help:${{ github.sha }}
+        run: |
+          # Lowercase the image tag for GHCR
+          IMAGE_TAG=$(echo "$IMAGE_TAG" | tr '[:upper:]' '[:lower:]')
+          
+          mkdir -p ~/.ssh
+          printf "%s\n" "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -r k8s "${EC2_USER:-ubuntu}@${EC2_HOST}:~/"
+
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "${EC2_USER:-ubuntu}@${EC2_HOST}" \
+            IMAGE_TAG="$IMAGE_TAG" \
+            bash << 'ENDSSH'
+            set -e
+
+            # ── 1. Stop host nginx to free port 80 ─────────────────────────
+            sudo systemctl stop nginx 2>/dev/null || true
+            sudo systemctl disable nginx 2>/dev/null || true
+
+            # ── 2. Install K3s (only if missing) ───────────────────────────
             if ! command -v k3s > /dev/null 2>&1; then
               curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
             fi
             sudo systemctl start k3s
             sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
 
-            # ── 2. Stop conflicting services ──────────────────────────────
-            sudo systemctl stop nginx 2>/dev/null || true
-            sudo docker stop hive-help 2>/dev/null || true
-            sudo docker rm hive-help 2>/dev/null || true
-            sudo iptables -t nat -F 2>/dev/null || true
+            cd $HOME
 
-            # ── 1. Install K3s (only if missing, with traefik disabled) ───
-            if ! command -v k3s > /dev/null 2>&1; then
-              curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
-            fi
-            sudo systemctl restart k3s
-            sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
-
-            # ── 2. Patch CoreDNS to fix MongoDB Atlas SRV resolution ──────
-            sudo k3s kubectl -n kube-system patch configmap coredns --type merge -p \
-              '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 8.8.4.4\n    cache 30\n    loop\n    reload\n    loadbalance\n}\n"}}' || true
-            sudo k3s kubectl -n kube-system rollout restart deployment coredns
-
-            # ── 3. Stop old containers ────────────────────────────────────
-            sudo docker stop hive-help 2>/dev/null || true
-            sudo docker rm hive-help 2>/dev/null || true
-            
-            # Restart k3s to ensure iptables rules are rebuilt
-            sudo systemctl restart k3s
-            sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
-
-            # ── 4. GHCR pull secret ───────────────────────────────────────
+            # ── 3. GHCR pull secret ───────────────────────────────────────
             sudo k3s kubectl create secret docker-registry ghcr-secret \
               --docker-server=ghcr.io \
               --docker-username=${{ github.actor }} \
               --docker-password=${{ secrets.GITHUB_TOKEN }} \
               --dry-run=client -o yaml | sudo k3s kubectl apply -f -
 
-            # ── 5. Deploy app + NodePort on 31000 ─────────────────────────
-            sudo k3s kubectl apply -f - << 'EOF'
-            apiVersion: apps/v1
-            kind: Deployment
-            metadata:
-              name: hive-help-app
-            spec:
-              replicas: 1
-              selector:
-                matchLabels:
-                  app: hive-help
-              template:
-                metadata:
-                  labels:
-                    app: hive-help
-                spec:
-                  imagePullSecrets:
-                  - name: ghcr-secret
-                  containers:
-                  - name: hive-help
-                    image: ghcr.io/${{ steps.repo.outputs.name }}:latest
-                    imagePullPolicy: Always
-                    ports:
-                    - containerPort: 80
-            ---
-            apiVersion: v1
-            kind: Service
-            metadata:
-              name: hive-help-service
-            spec:
-              type: NodePort
-              selector:
-                app: hive-help
-              ports:
-              - name: http
-                port: 80
-                targetPort: 80
-                nodePort: 31000
-            EOF
+            # ── 4. Replace placeholder with the actual image tag ───────────
+            sed -i "s|IMAGE_PLACEHOLDER_APP|${IMAGE_TAG}|g" k8s/app-deployment.yaml
 
-            # ── 6. Rollout latest image ───────────────────────────────────
-            sudo k3s kubectl rollout restart deployment hive-help-app
-            sudo k3s kubectl rollout status deployment hive-help-app --timeout=120s
+            # ── 5. Apply k8s resources ─────────────────────────────────────
+            sudo k3s kubectl apply -f k8s/app-deployment.yaml
 
-            # ── 7. Install and configure Host NGINX ───────────────────────
-            sudo apt-get update && sudo apt-get install -y nginx
+            # ── 6. Wait for rollout to complete ────────────────────────────
+            sudo k3s kubectl rollout status deployment/hive-help-app --timeout=180s
 
-            # Get the Pod IP of the NEWEST pod (bypasses terminating pods and ClusterIP host-routing issues)
-            POD_IP=$(sudo k3s kubectl get pods -l app=hive-help --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].status.podIP}' | awk '{print \$NF}')
-            echo "Proxying directly to newest Pod IP: \$POD_IP"
-            
-            sudo tee /etc/nginx/sites-enabled/default > /dev/null << NGINXEOF
-            server {
-                listen 80 default_server;
-                server_name _;
-                location / {
-                    proxy_pass http://$POD_IP:80;
-                    proxy_http_version 1.1;
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_read_timeout 60s;
-                }
-            }
-            NGINXEOF
-
-            sudo nginx -t && sudo systemctl enable nginx && sudo systemctl restart nginx
-
-            echo "✅ App live at http://$(curl -s ifconfig.me)"
+            echo "=============================="
+            echo "  Deployment Complete ✅"
+            echo "=============================="
+            sudo k3s kubectl get pods -A
+            echo "🌐 Website:  http://${EC2_HOST}"
+            echo "=============================="
+          ENDSSH

@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hive-help-app
+  labels:
+    app: hive-help
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hive-help
+  template:
+    metadata:
+      labels:
+        app: hive-help
+    spec:
+      hostNetwork: true
+      dnsPolicy: "None"
+      dnsConfig:
+        nameservers:
+          - 8.8.8.8
+          - 1.1.1.1
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: hive-help
+          image: IMAGE_PLACEHOLDER_APP
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+            - containerPort: 5000
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

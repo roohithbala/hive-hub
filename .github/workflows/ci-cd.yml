@@ -74,55 +74,41 @@ jobs:
           printf "%s\n" "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-          # Copy k8s files
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -r k8s "${EC2_USER:-ubuntu}@${EC2_HOST}:~/"
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa docker-compose.yml "${EC2_USER:-ubuntu}@${EC2_HOST}:~/"
 
-          # Run deployment
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "${EC2_USER:-ubuntu}@${EC2_HOST}" \
             IMAGE_TAG="$IMAGE_TAG" \
-            GITHUB_ACTOR="${{ github.actor }}" \
-            GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+            MONGODB_URI="${{ secrets.MONGODB_URI }}" \
+            JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            NODE_ENV="${{ secrets.NODE_ENV }}" \
+            PORT="${{ secrets.PORT }}" \
             bash << 'ENDSSH'
             set -e
 
-            # 1. Kill everything on port 80 (to be sure)
+            # 1. Uninstall K3s (to free up memory and ports)
+            if [ -f /usr/local/bin/k3s-uninstall.sh ]; then
+              sudo /usr/local/bin/k3s-uninstall.sh || true
+            fi
+
+            # 2. Install Docker if not present
+            if ! command -v docker > /dev/null 2>&1; then
+              curl -fsSL https://get.docker.com | sh
+              sudo usermod -aG docker $USER
+            fi
+            
+            # 3. Kill anything on port 80 (NGINX, etc.)
             sudo systemctl stop nginx 2>/dev/null || true
             sudo fuser -k 80/tcp 2>/dev/null || true
 
-            # 2. Ensure K3s is running without traefik
-            if ! command -v k3s > /dev/null 2>&1; then
-              curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik --disable servicelb" sh -
-            fi
-            sudo systemctl start k3s
-            sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
-            
-            # 3. Patch CoreDNS
-            sudo k3s kubectl -n kube-system patch configmap coredns --type merge -p \
-              '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 8.8.4.4\n    cache 30\n    loop\n    reload\n    loadbalance\n}\n"}}' || true
-            sudo k3s kubectl -n kube-system rollout restart deployment coredns || true
+            # 4. Deploy via Docker Compose
+            export IMAGE_NAME="$IMAGE_TAG"
+            export MONGODB_URI="$MONGODB_URI"
+            export JWT_SECRET="$JWT_SECRET"
+            export NODE_ENV="$NODE_ENV"
+            export PORT="$PORT"
 
-            # 4. Secret
-            sudo k3s kubectl create secret docker-registry ghcr-secret \
-              --docker-server=ghcr.io \
-              --docker-username="$GITHUB_ACTOR" \
-              --docker-password="$GITHUB_TOKEN" \
-              --dry-run=client -o yaml | sudo k3s kubectl apply -f -
+            docker compose pull
+            docker compose up -d --force-recreate --remove-orphans
 
-            # 5. Apply YAML
-            sed -i "s|IMAGE_PLACEHOLDER_APP|$IMAGE_TAG|g" k8s/app-deployment.yaml
-            sudo k3s kubectl apply -f k8s/app-deployment.yaml
-            
-            # Wait for rollout
-            sudo k3s kubectl rollout status deployment/hive-help-app --timeout=180s
-
-            # 6. Configure Host NGINX to proxy to the Pod on Port 8080
-            sudo apt-get update && sudo apt-get install -y nginx
-            
-            sudo cp k8s/nginx-host.conf /etc/nginx/sites-available/hive-help
-            sudo ln -sf /etc/nginx/sites-available/hive-help /etc/nginx/sites-enabled/default
-            
-            sudo nginx -t
-            sudo systemctl restart nginx
-
-            echo "Deployment successful! http://${EC2_HOST:-3.236.14.12}"
+            echo "Deployment successful! http://${EC2_HOST}"
           ENDSSH

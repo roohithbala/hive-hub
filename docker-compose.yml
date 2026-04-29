@@ -1,47 +1,11 @@
 services:
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ${IMAGE_NAME:-ghcr.io/sarvesh4329/hive-help:latest}
-    environment:
-      NODE_ENV: ${NODE_ENV:-production}
-      PORT: ${PORT:-5000}
-      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/bee_nest}
-      JWT_SECRET: ${JWT_SECRET}
+  app:
+    image: ${IMAGE_NAME}
     ports:
-      - "${PORT:-5000}:5000"
       - "80:80"
-    depends_on:
-      mongo:
-        condition: service_healthy
-    restart: unless-stopped
-    mem_limit: 512m
-    cpus: "0.70"
-
-  mongo:
-    image: mongo:7-jammy
     environment:
-      MONGO_INITDB_DATABASE: bee_nest
-    volumes:
-      - mongo_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    mem_limit: 384m
-    cpus: "0.50"
-
-  watchtower:
-    image: containrrr/watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 30 --cleanup
-    restart: unless-stopped
-    mem_limit: 64m
-    cpus: "0.10"
-
-volumes:
-  mongo_data:
+      - MONGODB_URI=${MONGODB_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${PORT}
+    restart: always

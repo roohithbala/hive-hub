@@ -32,14 +32,17 @@ ENV PORT=${PORT:-5000}
 ENV MONGODB_URI=$MONGODB_URI
 ENV JWT_SECRET=$JWT_SECRET
 
+# Cleanup default configs BEFORE copying ours
+RUN rm -rf /etc/nginx/http.d/*.conf /etc/nginx/conf.d/*.conf
+
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY default.conf /etc/nginx/http.d/default.conf
 COPY start.sh /start.sh
+
 RUN chmod +x /start.sh && \
     mkdir -p /var/cache/nginx /var/log/nginx && \
-    rm -rf /etc/nginx/http.d/*.conf /etc/nginx/conf.d/*.conf && \
     chmod -R 777 /var/cache/nginx /var/log/nginx /usr/share/nginx/html
 
-EXPOSE 90 5000
+EXPOSE 80 5000
 
 CMD ["/start.sh"]

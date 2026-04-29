@@ -128,7 +128,7 @@ jobs:
               --docker-password=${{ secrets.GITHUB_TOKEN }} \
               --dry-run=client -o yaml | sudo k3s kubectl apply -f -
             
-            # Deploy with hostNetwork=true so Nginx binds directly to EC2's port 90
+            # Deploy app pod with hostNetwork so Nginx binds directly to EC2 port 80
             cat << 'MANIFEST' | sudo k3s kubectl apply -f -
             apiVersion: apps/v1
             kind: Deployment
@@ -153,17 +153,11 @@ jobs:
                     image: ghcr.io/${{ steps.repo.outputs.name }}:latest
                     imagePullPolicy: Always
                     ports:
-                    - containerPort: 90
+                    - containerPort: 80
             MANIFEST
             
             # Rollout restart to pull latest image
             sudo k3s kubectl rollout restart deployment hive-help-app
             sudo k3s kubectl rollout status deployment hive-help-app --timeout=90s
             
-            # Redirect port 80 -> 90 via iptables
-            sudo iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 90 2>/dev/null || true
-            sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 90
-            sudo iptables -t nat -D OUTPUT -p tcp -o lo --dport 80 -j REDIRECT --to-port 90 2>/dev/null || true
-            sudo iptables -t nat -A OUTPUT -p tcp -o lo --dport 80 -j REDIRECT --to-port 90
-            
-            echo "✅ Done. App running on port 90 via hostNetwork, accessible on port 80."
+            echo "✅ Done. Nginx pod running with hostNetwork on port 80."

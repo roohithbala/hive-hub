@@ -92,12 +92,9 @@ jobs:
             sudo systemctl disable nginx 2>/dev/null || true
             sudo fuser -k 80/tcp 2>/dev/null || true
 
-            # 2. Ensure K3s is running with Traefik
+            # 2. Ensure K3s is running (Lean version)
             if ! command -v k3s > /dev/null 2>&1; then
-              curl -sfL https://get.k3s.io | sh -
-            else
-              # If already installed without traefik, we need to make sure it is enabled
-              curl -sfL https://get.k3s.io | sh -
+              curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
             fi
             sudo systemctl start k3s
             sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
@@ -114,9 +111,43 @@ jobs:
               --docker-password="$GITHUB_TOKEN" \
               --dry-run=client -o yaml | sudo k3s kubectl apply -f -
 
-            # 5. Update YAML and Apply (Uses the new Ingress)
-            sed -i "s|IMAGE_PLACEHOLDER_APP|$IMAGE_TAG|g" k8s/app-deployment.yaml
-            sudo k3s kubectl apply -f k8s/app-deployment.yaml
+            # 5. Final Push: hostNetwork + Recreate + Resources
+            sudo k3s kubectl apply -f - << EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hive-help-app
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hive-help
+  template:
+    metadata:
+      labels:
+        app: hive-help
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: hive-help
+        image: $IMAGE_TAG
+        securityContext:
+          runAsUser: 0
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+EOF
             
             sudo k3s kubectl rollout restart deployment hive-help-app
             sudo k3s kubectl rollout status deployment/hive-help-app --timeout=180s

@@ -112,11 +112,14 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Install/Configure K3s without Traefik (idempotent)
-            curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
-            
-            # Wait for K3s to be fully ready
-            sudo k3s kubectl wait --for=condition=ready node --all --timeout=60s
+            # Install K3s only if not already installed
+            if ! command -v k3s &> /dev/null; then
+              curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
+              sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
+            else
+              sudo systemctl start k3s 2>/dev/null || true
+              sleep 3
+            fi
             
             # Stop any running docker-compose
             cd ~/app 2>/dev/null && sudo docker compose down 2>/dev/null || true
@@ -128,7 +131,7 @@ jobs:
               --docker-password=${{ secrets.GITHUB_TOKEN }} \
               --dry-run=client -o yaml | sudo k3s kubectl apply -f -
             
-            # Deploy app pod with hostNetwork so Nginx binds directly to EC2 port 80
+            # 1. Deploy the app (Node backend + React frontend via nginx on port 80)
             cat << 'MANIFEST' | sudo k3s kubectl apply -f -
             apiVersion: apps/v1
             kind: Deployment
@@ -144,8 +147,6 @@ jobs:
                   labels:
                     app: hive-help
                 spec:
-                  hostNetwork: true
-                  dnsPolicy: ClusterFirstWithHostNet
                   imagePullSecrets:
                   - name: ghcr-secret
                   containers:
@@ -154,10 +155,77 @@ jobs:
                     imagePullPolicy: Always
                     ports:
                     - containerPort: 80
+                    - containerPort: 5000
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: hive-help-service
+            spec:
+              type: ClusterIP
+              selector:
+                app: hive-help
+              ports:
+              - name: nginx
+                port: 80
+                targetPort: 80
+            ---
+            # 2. Nginx proxy pod - hostNetwork on port 80, forwards to app service
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: nginx-proxy-config
+            data:
+              nginx.conf: |
+                events {}
+                http {
+                  server {
+                    listen 8080;
+                    location / {
+                      proxy_pass http://hive-help-service:80;
+                      proxy_set_header Host $host;
+                      proxy_set_header X-Real-IP $remote_addr;
+                    }
+                  }
+                }
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: nginx-proxy
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: nginx-proxy
+              template:
+                metadata:
+                  labels:
+                    app: nginx-proxy
+                spec:
+                  hostNetwork: true
+                  dnsPolicy: ClusterFirstWithHostNet
+                  containers:
+                  - name: nginx
+                    image: nginx:alpine
+                    ports:
+                    - containerPort: 8080
+                    volumeMounts:
+                    - name: config
+                      mountPath: /etc/nginx/nginx.conf
+                      subPath: nginx.conf
+                  volumes:
+                  - name: config
+                    configMap:
+                      name: nginx-proxy-config
             MANIFEST
             
-            # Rollout restart to pull latest image
+            # Rollout app with latest image
             sudo k3s kubectl rollout restart deployment hive-help-app
-            sudo k3s kubectl rollout status deployment hive-help-app --timeout=90s
+            sudo k3s kubectl rollout status deployment hive-help-app --timeout=120s
             
-            echo "✅ Done. Nginx pod running with hostNetwork on port 80."
+            # iptables: redirect port 80 -> 8080 (nginx-proxy hostNetwork port)
+            sudo iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080 2>/dev/null || true
+            sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080
+            
+            echo "✅ Done!"

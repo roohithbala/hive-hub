@@ -63,59 +63,93 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Deploy to EC2 via SSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-          IMAGE_TAG: ghcr.io/${{ github.repository }}:${{ github.sha }}
-        run: |
-          # Lowercase the image tag for GHCR
-          IMAGE_TAG=$(echo "$IMAGE_TAG" | tr '[:upper:]' '[:lower:]')
-          
-          mkdir -p ~/.ssh
-          printf "%s\n" "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            IMAGE_TAG="ghcr.io/${{ github.repository }}:${{ github.sha }}"
+            IMAGE_TAG=$(echo "$IMAGE_TAG" | tr '[:upper:]' '[:lower:]')
 
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -r k8s "${EC2_USER:-ubuntu}@${EC2_HOST}:~/"
-
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "${EC2_USER:-ubuntu}@${EC2_HOST}" \
-            IMAGE_TAG="$IMAGE_TAG" \
-            bash << 'ENDSSH'
-            set -e
-
-            # ── 1. Stop host nginx to free port 80 ─────────────────────────
-            sudo systemctl stop nginx 2>/dev/null || true
-            sudo systemctl disable nginx 2>/dev/null || true
-
-            # ── 2. Install K3s (only if missing) ───────────────────────────
+            # ── 1. Install K3s (only if missing) ───────────────────────────
             if ! command -v k3s > /dev/null 2>&1; then
               curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
             fi
             sudo systemctl start k3s
             sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
 
-            cd $HOME
+            # ── 2. Patch CoreDNS to fix MongoDB Atlas SRV resolution ──────
+            sudo k3s kubectl -n kube-system patch configmap coredns --type merge -p \
+              '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 8.8.4.4\n    cache 30\n    loop\n    reload\n    loadbalance\n}\n"}}' || true
+            sudo k3s kubectl -n kube-system rollout restart deployment coredns
 
-            # ── 3. GHCR pull secret ───────────────────────────────────────
+            # ── 3. Stop old ghost containers ──────────────────────────────
+            sudo docker stop hive-help 2>/dev/null || true
+            sudo docker rm hive-help 2>/dev/null || true
+
+            # ── 4. GHCR pull secret ───────────────────────────────────────
             sudo k3s kubectl create secret docker-registry ghcr-secret \
               --docker-server=ghcr.io \
               --docker-username=${{ github.actor }} \
               --docker-password=${{ secrets.GITHUB_TOKEN }} \
               --dry-run=client -o yaml | sudo k3s kubectl apply -f -
 
-            # ── 4. Replace placeholder with the actual image tag ───────────
-            sed -i "s|IMAGE_PLACEHOLDER_APP|${IMAGE_TAG}|g" k8s/app-deployment.yaml
-
-            # ── 5. Apply k8s resources ─────────────────────────────────────
-            sudo k3s kubectl apply -f k8s/app-deployment.yaml
+            # ── 5. Deploy App Pod ─────────────────────────────────────────
+            sudo k3s kubectl apply -f - << EOF
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: hive-help-app
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: hive-help
+              template:
+                metadata:
+                  labels:
+                    app: hive-help
+                spec:
+                  imagePullSecrets:
+                  - name: ghcr-secret
+                  containers:
+                  - name: hive-help
+                    image: $IMAGE_TAG
+                    imagePullPolicy: Always
+                    ports:
+                    - containerPort: 80
+            EOF
 
             # ── 6. Wait for rollout to complete ────────────────────────────
+            sudo k3s kubectl rollout restart deployment hive-help-app
             sudo k3s kubectl rollout status deployment/hive-help-app --timeout=180s
+
+            # ── 7. Install and configure Host NGINX ───────────────────────
+            sudo apt-get update && sudo apt-get install -y nginx
+
+            # Get the exact Pod IP of the newest healthy pod
+            POD_IP=$(sudo k3s kubectl get pods -l app=hive-help --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].status.podIP}' | awk '{print \$NF}')
+            
+            sudo bash -c "cat > /etc/nginx/sites-enabled/default << NGINXEOF
+            server {
+                listen 80 default_server;
+                server_name _;
+                location / {
+                    proxy_pass http://$POD_IP:80;
+                    proxy_http_version 1.1;
+                    proxy_set_header Host \\\$host;
+                    proxy_set_header X-Real-IP \\\$remote_addr;
+                    proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+                    proxy_read_timeout 60s;
+                }
+            }
+            NGINXEOF"
+
+            sudo nginx -t && sudo systemctl enable nginx && sudo systemctl restart nginx
 
             echo "=============================="
             echo "  Deployment Complete ✅"
-            echo "=============================="
-            sudo k3s kubectl get pods -A
+            echo "  Pod IP: $POD_IP"
             echo "🌐 Website:  http://${EC2_HOST}"
             echo "=============================="
-          ENDSSH

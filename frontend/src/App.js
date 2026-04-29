@@ -19,7 +19,7 @@ function App() {
     localStorage.setItem('role', newRole);
   };
 
-  // Role-based dashboard routing
+  // Role-based dashboard routing  
   const Dashboard = () => {
     if (role === 'user') return <UserDashboard setRole={handleSetRole} />;
     if (role === 'beekeeper') return <BeekeeperDashboard setRole={handleSetRole} />;

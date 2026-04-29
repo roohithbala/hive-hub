@@ -90,25 +90,18 @@ jobs:
             # 1. Clear Port 80 and cleanup Nginx
             sudo systemctl stop nginx 2>/dev/null || true
             sudo systemctl disable nginx 2>/dev/null || true
-            sudo apt-get remove -y nginx nginx-common 2>/dev/null || true
             sudo fuser -k 80/tcp 2>/dev/null || true
 
-            # 2. Ensure K3s is running
+            # 2. Ensure K3s is running with Traefik
             if ! command -v k3s > /dev/null 2>&1; then
-              curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
+              curl -sfL https://get.k3s.io | sh -
+            else
+              # If already installed without traefik, we need to make sure it is enabled
+              curl -sfL https://get.k3s.io | sh -
             fi
             sudo systemctl start k3s
             sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
             
-            # Wait for CoreDNS to appear (important on fresh installs)
-            for i in {1..30}; do
-              if sudo k3s kubectl -n kube-system get deployment coredns >/dev/null 2>&1; then
-                break
-              fi
-              echo "Waiting for CoreDNS to initialize..."
-              sleep 5
-            done
-
             # 3. Patch CoreDNS
             sudo k3s kubectl -n kube-system patch configmap coredns --type merge -p \
               '{"data":{"Corefile":".:53 {\n    errors\n    health\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n      pods insecure\n      fallthrough in-addr.arpa ip6.arpa\n    }\n    hosts /etc/coredns/NodeHosts {\n      ttl 60\n      reload 15s\n      fallthrough\n    }\n    prometheus :9153\n    forward . 8.8.8.8 8.8.4.4\n    cache 30\n    loop\n    reload\n    loadbalance\n}\n"}}' || true
@@ -121,12 +114,12 @@ jobs:
               --docker-password="$GITHUB_TOKEN" \
               --dry-run=client -o yaml | sudo k3s kubectl apply -f -
 
-            # 5. Update YAML and Apply
-            sed -i "s|IMAGE_PLACEHOLDER_APP|$IMAGE_TAG|g" k8s/final-deploy.yaml
-            sudo k3s kubectl apply -f k8s/final-deploy.yaml
+            # 5. Update YAML and Apply (Uses the new Ingress)
+            sed -i "s|IMAGE_PLACEHOLDER_APP|$IMAGE_TAG|g" k8s/app-deployment.yaml
+            sudo k3s kubectl apply -f k8s/app-deployment.yaml
             
             sudo k3s kubectl rollout restart deployment hive-help-app
             sudo k3s kubectl rollout status deployment/hive-help-app --timeout=180s
 
-            echo "Deployment successful! http://44.204.90.79"
+            echo "Deployment successful! http://3.236.14.12"
           ENDSSH

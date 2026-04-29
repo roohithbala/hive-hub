@@ -30,5 +30,10 @@ jobs:
           push: true
           # Tag with the OLD repo's name so Watchtower can see it
           tags: ghcr.io/sarvesh4329/hive-help:latest
+          build-args: |
+            MONGODB_URI=${{ secrets.MONGODB_URI }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            NODE_ENV=${{ secrets.NODE_ENV }}
+            PORT=${{ secrets.PORT }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

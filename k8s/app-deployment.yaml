@@ -14,7 +14,6 @@ spec:
       labels:
         app: hive-help
     spec:
-      hostNetwork: true
       dnsPolicy: "None"
       dnsConfig:
         nameservers:

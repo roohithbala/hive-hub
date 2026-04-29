@@ -1,9 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hive-help-service
+spec:
+  type: NodePort
+  selector:
+    app: hive-help
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 80
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: hive-help-app
-  labels:
-    app: hive-help
 spec:
   replicas: 1
   selector:

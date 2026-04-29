@@ -108,28 +108,15 @@ jobs:
 
             # 4. Update YAML and Apply
             sed -i "s|IMAGE_PLACEHOLDER_APP|$IMAGE_TAG|g" k8s/app-deployment.yaml
+            
+            # Stop host nginx to free port 80 for K3s NodePort
+            sudo systemctl stop nginx 2>/dev/null || true
+            sudo systemctl disable nginx 2>/dev/null || true
+            
             sudo k3s kubectl apply -f k8s/app-deployment.yaml
             
             sudo k3s kubectl rollout restart deployment hive-help-app
             sudo k3s kubectl rollout status deployment/hive-help-app --timeout=180s
-
-            # 5. Configure Host Nginx
-            sudo apt-get update && sudo apt-get install -y nginx
-            
-            POD_IP=$(sudo k3s kubectl get pods -l app=hive-help --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].status.podIP}' | awk '{print $NF}')
-            
-            if [ -z "$POD_IP" ]; then
-              echo "ERROR: Pod IP not found"
-              exit 1
-            fi
-
-            cp k8s/nginx-host.conf /tmp/nginx-host.conf
-            sed -i "s|POD_IP_PLACEHOLDER|$POD_IP|g" /tmp/nginx-host.conf
-            sudo cp /tmp/nginx-host.conf /etc/nginx/sites-available/hive-help
-            sudo ln -sf /etc/nginx/sites-available/hive-help /etc/nginx/sites-enabled/default
-            
-            sudo nginx -t
-            sudo systemctl restart nginx
 
             echo "Deployment successful! http://$EC2_HOST"
           ENDSSH

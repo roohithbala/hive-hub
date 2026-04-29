@@ -164,23 +164,19 @@ jobs:
               selector:
                 app: hive-help
             ---
-            apiVersion: networking.k8s.io/v1
-            kind: Ingress
+            apiVersion: traefik.containo.us/v1alpha1
+            kind: IngressRoute
             metadata:
-              name: hive-help-ingress
-              annotations:
-                traefik.ingress.kubernetes.io/router.entrypoints: web
+              name: hive-help-route
             spec:
-              rules:
-              - http:
-                  paths:
-                  - path: /
-                    pathType: Prefix
-                    backend:
-                      service:
-                        name: hive-help-service
-                        port:
-                          number: 90
+              entryPoints:
+                - web
+              routes:
+              - match: PathPrefix(`/`)
+                kind: Rule
+                services:
+                - name: hive-help-service
+                  port: 90
             EOF
             
             # Apply manifest

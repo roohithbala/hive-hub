@@ -1,4 +1,5 @@
 #!/bin/sh
+# Triggering Watchtower test deployment
 set -e
 
 # echo "Check configuration"

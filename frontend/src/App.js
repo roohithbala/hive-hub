@@ -29,7 +29,7 @@ function App() {
 
   return (
     <Router>
-      <div style={{ background: '#4CAF50', color: 'white', textAlign: 'center', padding: '10px' }}>
+      <div style={{ background: '#FF9800', color: 'white', textAlign: 'center', padding: '10px', fontWeight: 'bold' }}>
         🚀 Watchtower Automated Deployment is Active!
       </div>
       <Routes>

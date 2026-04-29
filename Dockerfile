@@ -40,6 +40,6 @@ RUN chmod +x /start.sh && \
     rm -rf /etc/nginx/http.d/*.conf /etc/nginx/conf.d/*.conf && \
     chmod -R 777 /var/cache/nginx /var/log/nginx /usr/share/nginx/html
 
-EXPOSE 80 5000
+EXPOSE 90 5000
 
 CMD ["/start.sh"]

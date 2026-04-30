@@ -92,7 +92,7 @@ function MyAccount() {
       await api().post(`/appointments/${currentAppointment._id}/review`,
         { rating, review }
       );
-      window.alert('Review submitted successfully!');
+      window.alert('Review submitted successfully');
       setShowReviewModal(false);
       fetchData(); // Refresh data to show new review
     } catch (err) {

@@ -29,9 +29,7 @@ function App() {
 
   return (
     <Router>
-      <div style={{ background: '#FF9800', color: 'white', textAlign: 'center', padding: '10px', fontWeight: 'bold' }}>
-        🔥 HIVEHELP Automation - 100% Zero Manual Work!
-      </div>
+      
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login setRole={handleSetRole} />} />

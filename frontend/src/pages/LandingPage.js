@@ -7,7 +7,7 @@ const dark = "#3A2C13";
 
 const features = [
   {
-    title: "Book a Service",
+    title: "Book a Service!!",
     img: "/book.jpg",
     desc: "Book trusted beekeepers for safe honeycomb removal at your location."
   },
